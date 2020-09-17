@@ -16,6 +16,8 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   sensor_msgs
   ndt_omp
+  tf2
+  tf2_ros
 )
 
 find_package(PCL 1.7 REQUIRED)
@@ -54,6 +56,12 @@ include_directories(
 # nodelets
 add_library(hdl_localization_nodelet apps/hdl_localization_nodelet.cpp)
 target_link_libraries(hdl_localization_nodelet
+  ${catkin_LIBRARIES}
+  ${PCL_LIBRARIES}
+)
+
+add_library(hdl_robot_localization_nodelet apps/hdl_robot_localization_nodelet.cpp)
+target_link_libraries(hdl_robot_localization_nodelet
   ${catkin_LIBRARIES}
   ${PCL_LIBRARIES}
 )
