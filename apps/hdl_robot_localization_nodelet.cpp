@@ -54,6 +54,7 @@ public:
     initialize_params();
     
     odom_child_frame_id = private_nh.param<std::string>("odom_child_frame_id", "base_link");
+    transform_tolerance = ros::Duration(private_nh.param<double>("transform_tolerance", 1.0));
 
     use_imu = private_nh.param<bool>("use_imu", true);
     invert_imu = private_nh.param<bool>("invert_imu", false);
@@ -61,11 +62,10 @@ public:
       NODELET_INFO("enable imu-based prediction");
       imu_sub = mt_nh.subscribe("/gpsimu_driver/imu_data", 256, &HdlRobotLocalizationNodelet::imu_callback, this);
     }
-    points_sub = mt_nh.subscribe("/velodyne_points", 5, &HdlRobotLocalizationNodelet::points_callback, this);
+    points_sub = mt_nh.subscribe("/velodyne_points", 10, &HdlRobotLocalizationNodelet::points_callback, this);
     globalmap_sub = nh.subscribe("/globalmap", 1, &HdlRobotLocalizationNodelet::globalmap_callback, this);
     initialpose_sub = nh.subscribe("/initialpose", 8, &HdlRobotLocalizationNodelet::initialpose_callback, this);
 
-    //pose_pub = nh.advertise<nav_msgs::Odometry>("/odom", 5, false);
     aligned_pub = nh.advertise<sensor_msgs::PointCloud2>("/aligned_points", 5, false);
   }
 
@@ -160,6 +160,9 @@ private:
     }
     Eigen::Matrix4f mat = tf2::transformToEigen(transform_stamped.transform).matrix().cast<float>();
     pcl_ros::transformPointCloud(mat, *points_msg, transformed_cloud_msg);
+    transformed_cloud_msg.header.frame_id = odom_child_frame_id;
+    transformed_cloud_msg.header.stamp = stamp;
+
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>());
     pcl::fromROSMsg(transformed_cloud_msg, *cloud);
 
@@ -203,7 +206,6 @@ private:
       aligned_pub.publish(aligned);
     }
 
-    // publish_odometry(points_msg->header.stamp, pose_estimator->matrix());
     publish_tf(points_msg->header.stamp, pose_estimator->matrix());
   }
 
@@ -257,56 +259,28 @@ private:
     return filtered;
   }
 
-  /**
-   * @brief publish odometry
-   * @param stamp  timestamp
-   * @param pose   odometry pose to be published
-   */
-  /**
-  void publish_odometry(const ros::Time& stamp, const Eigen::Matrix4f& pose) {
-    // broadcast the transform over tf
-    geometry_msgs::TransformStamped odom_trans = matrix2transform(stamp, pose, "map", odom_child_frame_id);
-    tf_broadcaster.sendTransform(odom_trans);
-
-    // publish the transform
-    nav_msgs::Odometry odom;
-    odom.header.stamp = stamp;
-    odom.header.frame_id = "map";
-
-    odom.pose.pose.position.x = pose(0, 3);
-    odom.pose.pose.position.y = pose(1, 3);
-    odom.pose.pose.position.z = pose(2, 3);
-    odom.pose.pose.orientation = odom_trans.transform.rotation;
-
-    odom.child_frame_id = odom_child_frame_id;
-    odom.twist.twist.linear.x = 0.0;
-    odom.twist.twist.linear.y = 0.0;
-    odom.twist.twist.angular.z = 0.0;
-
-    pose_pub.publish(odom);
-  }*/
-
 void publish_tf(const ros::Time& stamp, const Eigen::Matrix4f& pose) {
     // broadcast the transform over tf
-    geometry_msgs::TransformStamped tf_map_to_odom;
+    geometry_msgs::TransformStamped transform_odom2map;
     // get map to base_link trans
-    geometry_msgs::TransformStamped tf_map_to_base = matrix2transform(stamp, pose, "map", odom_child_frame_id);
-    geometry_msgs::TransformStamped tf_base_to_odom;
+    geometry_msgs::TransformStamped transform_base2map = matrix2transform(stamp, pose, "map", odom_child_frame_id);
+    geometry_msgs::TransformStamped transform_odom2base;
     try {
-      tf_base_to_odom = tf_buffer.lookupTransform("odom", odom_child_frame_id, stamp, ros::Duration(1.0));
+      transform_odom2base = tf_buffer.lookupTransform(odom_child_frame_id, "odom", stamp, ros::Duration(0.2));
     }
     catch (tf2::TransformException &ex) {
       ROS_WARN("%s",ex.what());
       return;
     }
 
-    tf2::doTransform(tf_map_to_base, tf_map_to_odom, tf_base_to_odom);
-    tf_map_to_odom.header.frame_id = "map";
-    tf_map_to_odom.header.stamp = stamp;
-    tf_map_to_odom.child_frame_id = "odom";
+    tf2::doTransform(transform_base2map, transform_odom2map, transform_odom2base);
+    transform_odom2map.header.frame_id = "map";
+    transform_odom2map.header.stamp = stamp + transform_tolerance;
+    transform_odom2map.child_frame_id = "odom";
 
-    tf_broadcaster.sendTransform(tf_map_to_odom);
+    tf_broadcaster.sendTransform(transform_odom2map);
   }
+
   /**
    * @brief convert a Eigen::Matrix to TransformedStamped
    * @param stamp           timestamp
@@ -344,6 +318,7 @@ private:
   ros::NodeHandle private_nh;
   
   std::string odom_child_frame_id;
+  ros::Duration transform_tolerance;
 
   bool use_imu;
   bool invert_imu;
@@ -352,7 +327,6 @@ private:
   ros::Subscriber globalmap_sub;
   ros::Subscriber initialpose_sub;
 
-  // ros::Publisher pose_pub;
   ros::Publisher aligned_pub;
   tf2_ros::TransformBroadcaster tf_broadcaster;
   tf2_ros::Buffer tf_buffer;
