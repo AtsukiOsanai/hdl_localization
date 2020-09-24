@@ -66,7 +66,7 @@ public:
     globalmap_sub = nh.subscribe("/globalmap", 1, &HdlRobotLocalizationNodelet::globalmap_callback, this);
     initialpose_sub = nh.subscribe("/initialpose", 8, &HdlRobotLocalizationNodelet::initialpose_callback, this);
 
-    aligned_pub = nh.advertise<sensor_msgs::PointCloud2>("/aligned_points", 5, false);
+    aligned_pub = nh.advertise<sensor_msgs::PointCloud2>("/aligned_points", 10, false);
   }
 
 private:
@@ -266,14 +266,14 @@ void publish_tf(const ros::Time& stamp, const Eigen::Matrix4f& pose) {
     geometry_msgs::TransformStamped transform_base2map = matrix2transform(stamp, pose, "map", odom_child_frame_id);
     geometry_msgs::TransformStamped transform_odom2base;
     try {
-      transform_odom2base = tf_buffer.lookupTransform(odom_child_frame_id, "odom", stamp, ros::Duration(0.2));
+      transform_odom2base = tf_buffer.lookupTransform(odom_child_frame_id, "odom", stamp, ros::Duration(1.0));
     }
     catch (tf2::TransformException &ex) {
       ROS_WARN("%s",ex.what());
       return;
     }
 
-    tf2::doTransform(transform_base2map, transform_odom2map, transform_odom2base);
+    tf2::doTransform(transform_odom2base, transform_odom2map, transform_base2map);
     transform_odom2map.header.frame_id = "map";
     transform_odom2map.header.stamp = stamp + transform_tolerance;
     transform_odom2map.child_frame_id = "odom";
