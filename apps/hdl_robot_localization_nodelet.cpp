@@ -67,6 +67,7 @@ public:
     initialpose_sub = nh.subscribe("/initialpose", 8, &HdlRobotLocalizationNodelet::initialpose_callback, this);
 
     aligned_pub = nh.advertise<sensor_msgs::PointCloud2>("/aligned_points", 10, false);
+    posewithcovariance_pub = nh.advertise<geometry_msgs::PoseWithCovarianceStamped>("/pose_with_covariance", 10, false);
   }
 
 private:
@@ -207,6 +208,7 @@ private:
     }
 
     publish_tf(points_msg->header.stamp, pose_estimator->matrix());
+    publish_posewithcovariance(points_msg->header.stamp, pose_estimator->matrix(), pose_estimator->cov());
   }
 
   /**
@@ -259,7 +261,7 @@ private:
     return filtered;
   }
 
-void publish_tf(const ros::Time& stamp, const Eigen::Matrix4f& pose) {
+  void publish_tf(const ros::Time& stamp, const Eigen::Matrix4f& pose) {
     // broadcast the transform over tf
     geometry_msgs::TransformStamped transform_odom2map;
     // get map to base_link trans
@@ -279,6 +281,32 @@ void publish_tf(const ros::Time& stamp, const Eigen::Matrix4f& pose) {
     transform_odom2map.child_frame_id = "odom";
 
     tf_broadcaster.sendTransform(transform_odom2map);
+  }
+
+  void publish_posewithcovariance(const ros::Time& stamp, const Eigen::Matrix4f& pose, const Eigen::MatrixXf& covariance) {
+    geometry_msgs::PoseWithCovarianceStamped pose_with_cov;
+    pose_with_cov.header.frame_id = "map";
+    pose_with_cov.header.stamp = stamp;
+
+    pose_with_cov.pose.pose.position.x = pose(0, 3);
+    pose_with_cov.pose.pose.position.y = pose(1, 3);
+    pose_with_cov.pose.pose.position.z = pose(2, 3);
+
+    Eigen::Quaternionf quat(pose.block<3, 3>(0, 0));
+    quat.normalize();
+    pose_with_cov.pose.pose.orientation.x = quat.x();
+    pose_with_cov.pose.pose.orientation.y = quat.y();
+    pose_with_cov.pose.pose.orientation.z = quat.z();
+    pose_with_cov.pose.pose.orientation.w = quat.w();
+
+    // how to calculate covariance about quaternion ?
+    for (int row = 0; row < 6; row++) {
+      for (int col = 0; col < 6; col++) {
+        pose_with_cov.pose.covariance[6 * row + col] = covariance(row, col);
+      }
+    }
+
+    posewithcovariance_pub.publish(pose_with_cov);
   }
 
   /**
@@ -328,6 +356,7 @@ private:
   ros::Subscriber initialpose_sub;
 
   ros::Publisher aligned_pub;
+  ros::Publisher posewithcovariance_pub;
   tf2_ros::TransformBroadcaster tf_broadcaster;
   tf2_ros::Buffer tf_buffer;
   tf2_ros::TransformListener tf_listener;

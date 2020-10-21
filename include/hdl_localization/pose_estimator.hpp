@@ -133,6 +133,23 @@ public:
     return m;
   }
 
+  Eigen::MatrixXf cov() const {
+    Eigen::MatrixXf cov_full = ukf->getCov();
+    // How do we understand the covariance about quaternion ?
+
+    // Eigen::MatrixXf cov_pos_quat = Eigen::MatrixXf::Identity(7, 7) * 0.01;
+    // cov_pos_quat.block<3, 3>(0, 0) = cov_full.block<3, 3>(0, 0);
+    // cov_pos_quat.block<4, 4>(3, 3) = cov_full.block<4, 4>(6, 6);
+    // cov_pos_quat.block<3, 4>(0, 3) = cov_full.block<3, 4>(0, 6);
+    // cov_pos_quat.block<4, 3>(3, 0) = cov_full.block<4, 3>(6, 0);
+    Eigen::MatrixXf cov_pos_quat = Eigen::MatrixXf::Identity(6, 6) * 0.01;
+    cov_pos_quat.block<3, 3>(0, 0) = cov_full.block<3, 3>(0, 0);
+    cov_pos_quat.block<3, 3>(3, 3) = cov_full.block<3, 3>(6, 6);
+    cov_pos_quat.block<3, 3>(0, 3) = cov_full.block<3, 3>(0, 6);
+    cov_pos_quat.block<3, 3>(3, 0) = cov_full.block<3, 3>(6, 0);
+    return cov_pos_quat;
+  }
+
 private:
   ros::Time init_stamp;         // when the estimator was initialized
   ros::Time prev_stamp;         // when the estimator was updated last time
